@@ -1,0 +1,6 @@
+{
+  "name": "PWA Inspector Studio",
+  "description": "Android WebView developer studio for inspecting PWAs, managing query parameters, clearing cache/cookies, capturing JS console logs, and testing web themes.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
