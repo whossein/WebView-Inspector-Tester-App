@@ -1,6 +1,16 @@
-# PWA Inspector & Test
+# PWA Inspector & Test App
 
 A comprehensive Android application for web developers and testers to inspect, debug, and test websites, Progressive Web Apps (PWAs), and WebViews directly on mobile devices.
+
+## 📸 Screenshots
+
+<p align="center">
+  <img src="screenshots/1.png" width="18%" />
+  <img src="screenshots/2.png" width="18%" />
+  <img src="screenshots/3.png" width="18%" />
+  <img src="screenshots/4.png" width="18%" />
+  <img src="screenshots/5.png" width="18%" />
+</p>
 
 ## 🌟 Features
 
