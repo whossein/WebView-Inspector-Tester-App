@@ -547,6 +547,16 @@ fun WebViewContainer(
                 onPageTitleChanged(title, currentUrl)
             }
 
+            @SuppressLint("WebViewClientOnReceivedSslError")
+            override fun onReceivedSslError(
+                view: WebView?,
+                handler: android.webkit.SslErrorHandler?,
+                error: android.net.http.SslError?
+            ) {
+                // Ignore SSL certificate errors to allow testing self-signed certs and local HTTPS
+                handler?.proceed()
+            }
+
             override fun shouldOverrideUrlLoading(
                 view: WebView?,
                 request: WebResourceRequest?
