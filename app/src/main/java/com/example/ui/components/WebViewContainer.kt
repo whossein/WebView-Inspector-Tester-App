@@ -171,7 +171,7 @@ private const val NETWORK_INSPECTOR_JS = """(function() {
                             window.AndroidNetworkInspector.logNetworkRequest(
                                 url, method, response.status, response.statusText || 'OK',
                                 JSON.stringify(reqHeaders), reqBody,
-                                JSON.stringify(resHeaders), resText.substring(0, 100000),
+                                JSON.stringify(resHeaders), resText.substring(0, 5000),
                                 Date.now() - startTime, false
                             );
                         }
@@ -264,15 +264,16 @@ private const val NETWORK_INSPECTOR_JS = """(function() {
                 try {
                     let resHeadersStr = this.getAllResponseHeaders() || '';
                     let resHeaders = {};
-                    resHeadersStr.split('
-').forEach(line => {
+                    resHeadersStr.split(/
+?
+/).forEach(line => {
                         let parts = line.split(': ');
                         if (parts.length === 2) resHeaders[parts[0]] = parts[1];
                     });
                     
                     let resText = '';
                     if (!this.responseType || this.responseType === 'text' || this.responseType === '') {
-                        resText = (this.responseText || '').substring(0, 100000);
+                        resText = (this.responseText || '').substring(0, 5000);
                     } else {
                         resText = '[' + this.responseType + ']';
                     }
@@ -291,7 +292,8 @@ private const val NETWORK_INSPECTOR_JS = """(function() {
             return origSend.apply(this, arguments);
         };
     }
-})();"""
+})();
+"""
 
 class PostMessageBridge(
     private val onPostMessageReceived: (payload: String, origin: String) -> Unit
@@ -600,6 +602,7 @@ fun WebViewContainer(
 
             override fun onPageFinished(view: WebView?, url: String?) {
                 super.onPageFinished(view, url)
+                android.webkit.CookieManager.getInstance().flush()
                 onLoadingStateChanged(false, 100)
                 view?.evaluateJavascript(NETWORK_INSPECTOR_JS, null)
                 view?.evaluateJavascript(POST_MESSAGE_INSPECTOR_JS, null)
