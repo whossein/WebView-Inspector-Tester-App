@@ -72,12 +72,11 @@ class NetworkInspectorBridge(
     }
 }
 
-private const val NETWORK_INSPECTOR_JS = """
-(function() {
+private const val NETWORK_INSPECTOR_JS = """(function() {
     if (!window.__mockRules) { window.__mockRules = []; }
     if (window.__networkInspectorInjected) return;
     window.__networkInspectorInjected = true;
-
+    
     function findMatchingMock(url, method) {
         if (!window.__mockRules || !Array.isArray(window.__mockRules)) return null;
         for (let rule of window.__mockRules) {
@@ -89,25 +88,34 @@ private const val NETWORK_INSPECTOR_JS = """
         }
         return null;
     }
-
+    
     if (window.fetch) {
         const origFetch = window.fetch;
         window.fetch = async function(...args) {
             let url = typeof args[0] === 'string' ? args[0] : (args[0] && args[0].url ? args[0].url : '');
             let options = args[1] || {};
             let method = (options.method || 'GET').toUpperCase();
-            let reqBody = options.body ? (typeof options.body === 'string' ? options.body : JSON.stringify(options.body)) : '';
+            let reqBody = '';
+            if (options.body) {
+                if (typeof options.body === 'string') reqBody = options.body;
+                else if (options.body instanceof FormData) reqBody = '[FormData]';
+                else if (options.body instanceof Blob) reqBody = '[Blob]';
+                else if (options.body instanceof ArrayBuffer) reqBody = '[ArrayBuffer]';
+                else {
+                    try { reqBody = JSON.stringify(options.body) || ''; } catch(e) {}
+                }
+            }
             let reqHeaders = {};
             if (options.headers) {
                 try {
-                    if (options.headers instanceof Headers) {
+                    if (typeof options.headers.forEach === 'function') {
                         options.headers.forEach((v, k) => reqHeaders[k] = v);
                     } else if (typeof options.headers === 'object') {
                         reqHeaders = options.headers;
                     }
                 } catch(e) {}
             }
-
+            
             const mockRule = findMatchingMock(url, method);
             if (mockRule) {
                 if (window.AndroidNetworkInspector) {
@@ -124,18 +132,28 @@ private const val NETWORK_INSPECTOR_JS = """
                     headers: {'Content-Type': mockRule.contentType || 'application/json'}
                 });
             }
-
+            
             const startTime = Date.now();
             try {
                 const response = await origFetch.apply(window, args);
                 const clone = response.clone();
                 let resText = '';
-                try { resText = await clone.text(); } catch(e) {}
+                try { 
+                    const ct = clone.headers.get('content-type') || '';
+                    if (ct.includes('application/json') || ct.includes('text/')) {
+                        resText = await clone.text(); 
+                    } else {
+                        resText = '[Binary/Other Data]';
+                    }
+                } catch(e) {}
+                
                 let resHeaders = {};
                 try {
-                    clone.headers.forEach((v, k) => resHeaders[k] = v);
+                    if (typeof clone.headers.forEach === 'function') {
+                        clone.headers.forEach((v, k) => resHeaders[k] = v);
+                    }
                 } catch(e) {}
-
+                
                 if (window.AndroidNetworkInspector) {
                     window.AndroidNetworkInspector.logNetworkRequest(
                         url, method, response.status, response.statusText || 'OK',
@@ -158,88 +176,101 @@ private const val NETWORK_INSPECTOR_JS = """
             }
         };
     }
-
+    
     if (window.XMLHttpRequest) {
-        const origXHR = window.XMLHttpRequest;
-        function CustomXHR() {
-            const xhr = new origXHR();
-            let method = 'GET';
-            let url = '';
-            let reqHeaders = {};
+        const origOpen = XMLHttpRequest.prototype.open;
+        const origSetRequestHeader = XMLHttpRequest.prototype.setRequestHeader;
+        const origSend = XMLHttpRequest.prototype.send;
+        
+        XMLHttpRequest.prototype.open = function(method, url) {
+            this._reqMethod = (method || 'GET').toUpperCase();
+            this._reqUrl = url || '';
+            this._reqHeaders = {};
+            return origOpen.apply(this, arguments);
+        };
+        
+        XMLHttpRequest.prototype.setRequestHeader = function(header, value) {
+            if (this._reqHeaders) {
+                this._reqHeaders[header] = value;
+            }
+            return origSetRequestHeader.apply(this, arguments);
+        };
+        
+        XMLHttpRequest.prototype.send = function(body) {
             let reqBody = '';
-            let startTime = 0;
-
-            const origOpen = xhr.open;
-            xhr.open = function(m, u) {
-                method = (m || 'GET').toUpperCase();
-                url = u || '';
-                return origOpen.apply(this, arguments);
-            };
-
-            const origSetRequestHeader = xhr.setRequestHeader;
-            xhr.setRequestHeader = function(k, v) {
-                reqHeaders[k] = v;
-                return origSetRequestHeader.apply(this, arguments);
-            };
-
-            const origSend = xhr.send;
-            xhr.send = function(body) {
-                reqBody = body ? (typeof body === 'string' ? body : String(body)) : '';
-                startTime = Date.now();
-
-                const mockRule = findMatchingMock(url, method);
-                if (mockRule) {
+            if (body) {
+                if (typeof body === 'string') reqBody = body;
+                else if (body instanceof FormData) reqBody = '[FormData]';
+                else if (body instanceof Blob) reqBody = '[Blob]';
+                else if (body instanceof ArrayBuffer) reqBody = '[ArrayBuffer]';
+                else {
+                    try { reqBody = String(body); } catch(e) {}
+                }
+            }
+            
+            const url = this._reqUrl || '';
+            const method = this._reqMethod || 'GET';
+            const reqHeaders = this._reqHeaders || {};
+            const startTime = Date.now();
+            
+            const mockRule = findMatchingMock(url, method);
+            if (mockRule) {
+                if (window.AndroidNetworkInspector) {
+                    window.AndroidNetworkInspector.logNetworkRequest(
+                        url, method, mockRule.statusCode, 'OK (Mocked)',
+                        JSON.stringify(reqHeaders), reqBody,
+                        JSON.stringify({'Content-Type': mockRule.contentType || 'application/json'}),
+                        mockRule.responseBody || '', 0, true
+                    );
+                }
+                setTimeout(() => {
+                    try {
+                        Object.defineProperty(this, 'status', { value: mockRule.statusCode || 200, writable: true });
+                        Object.defineProperty(this, 'statusText', { value: 'OK (Mocked)', writable: true });
+                        Object.defineProperty(this, 'responseText', { value: mockRule.responseBody || '', writable: true });
+                        Object.defineProperty(this, 'response', { value: mockRule.responseBody || '', writable: true });
+                        Object.defineProperty(this, 'readyState', { value: 4, writable: true });
+                        if (typeof this.onreadystatechange === 'function') this.onreadystatechange();
+                        if (typeof this.onload === 'function') this.onload();
+                        this.dispatchEvent(new Event('readystatechange'));
+                        this.dispatchEvent(new Event('load'));
+                        this.dispatchEvent(new Event('loadend'));
+                    } catch(e) {}
+                }, 10);
+                return;
+            }
+            
+            this.addEventListener('loadend', function() {
+                try {
+                    let resHeadersStr = this.getAllResponseHeaders() || '';
+                    let resHeaders = {};
+                    resHeadersStr.split('\r\n').forEach(line => {
+                        let parts = line.split(': ');
+                        if (parts.length === 2) resHeaders[parts[0]] = parts[1];
+                    });
+                    
+                    let resText = '';
+                    if (!this.responseType || this.responseType === 'text' || this.responseType === '') {
+                        resText = this.responseText || '';
+                    } else {
+                        resText = '[' + this.responseType + ']';
+                    }
+                    
                     if (window.AndroidNetworkInspector) {
                         window.AndroidNetworkInspector.logNetworkRequest(
-                            url, method, mockRule.statusCode, 'OK (Mocked)',
+                            url, method, this.status, this.statusText || '',
                             JSON.stringify(reqHeaders), reqBody,
-                            JSON.stringify({'Content-Type': mockRule.contentType || 'application/json'}),
-                            mockRule.responseBody || '', 0, true
+                            JSON.stringify(resHeaders), resText,
+                            Date.now() - startTime, false
                         );
                     }
-                    setTimeout(() => {
-                        try {
-                            Object.defineProperty(xhr, 'status', { value: mockRule.statusCode || 200, writable: true });
-                            Object.defineProperty(xhr, 'statusText', { value: 'OK (Mocked)', writable: true });
-                            Object.defineProperty(xhr, 'responseText', { value: mockRule.responseBody || '', writable: true });
-                            Object.defineProperty(xhr, 'response', { value: mockRule.responseBody || '', writable: true });
-                            Object.defineProperty(xhr, 'readyState', { value: 4, writable: true });
-                            if (typeof xhr.onreadystatechange === 'function') xhr.onreadystatechange();
-                            if (typeof xhr.onload === 'function') xhr.onload();
-                            xhr.dispatchEvent(new Event('readystatechange'));
-                            xhr.dispatchEvent(new Event('load'));
-                            xhr.dispatchEvent(new Event('loadend'));
-                        } catch(e) {}
-                    }, 10);
-                    return;
-                }
-
-                xhr.addEventListener('loadend', function() {
-                    try {
-                        let resHeadersStr = xhr.getAllResponseHeaders() || '';
-                        let resHeaders = {};
-                        resHeadersStr.split('\r\n').forEach(line => {
-                            let parts = line.split(': ');
-                            if (parts.length === 2) resHeaders[parts[0]] = parts[1];
-                        });
-                        if (window.AndroidNetworkInspector) {
-                            window.AndroidNetworkInspector.logNetworkRequest(
-                                url, method, xhr.status, xhr.statusText || '',
-                                JSON.stringify(reqHeaders), reqBody,
-                                JSON.stringify(resHeaders), xhr.responseText || '',
-                                Date.now() - startTime, false
-                            );
-                        }
-                    } catch(e) {}
-                });
-                return origSend.apply(this, arguments);
-            };
-            return xhr;
-        }
-        window.XMLHttpRequest = CustomXHR;
+                } catch(e) {}
+            });
+            
+            return origSend.apply(this, arguments);
+        };
     }
-})();
-"""
+})();"""
 
 class PostMessageBridge(
     private val onPostMessageReceived: (payload: String, origin: String) -> Unit
