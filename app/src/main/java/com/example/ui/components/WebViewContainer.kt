@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.graphics.Bitmap
 import android.os.Build
 import android.view.ViewGroup
+import android.webkit.CookieManager
 import android.webkit.ConsoleMessage
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
@@ -13,6 +14,9 @@ import android.webkit.WebViewClient
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -466,6 +470,14 @@ fun WebViewContainer(
                 displayZoomControls = false
                 mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
                 cacheMode = WebSettings.LOAD_DEFAULT
+                mediaPlaybackRequiresUserGesture = false
+                javaScriptCanOpenWindowsAutomatically = true
+            }
+
+            val currentWebView = this
+            android.webkit.CookieManager.getInstance().apply {
+                setAcceptCookie(true)
+                setAcceptThirdPartyCookies(currentWebView, true)
             }
 
             addJavascriptInterface(
@@ -491,6 +503,7 @@ fun WebViewContainer(
 
             // Enable debugging if on modern android
             WebView.setWebContentsDebuggingEnabled(true)
+            setNetworkAvailable(true)
         }
     }
 
@@ -541,7 +554,7 @@ fun WebViewContainer(
     }
 
     // Set clients
-    webView.webViewClient = remember(customHeaders, mockRules) {
+    val client = remember(customHeaders, mockRules) {
         object : WebViewClient() {
             override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
                 super.onPageStarted(view, url, favicon)
@@ -602,8 +615,13 @@ fun WebViewContainer(
             }
         }
     }
+    
+    // Only set if different to prevent cancelling loads
+    if (webView.webViewClient != client) {
+        webView.webViewClient = client
+    }
 
-    webView.webChromeClient = remember {
+    val chromeClient = remember {
         object : WebChromeClient() {
             override fun onProgressChanged(view: WebView?, newProgress: Int) {
                 super.onProgressChanged(view, newProgress)
@@ -637,24 +655,23 @@ fun WebViewContainer(
         }
     }
 
-    // Load active URL
-    DisposableEffect(activeUrl) {
-        if (activeUrl.isNotBlank()) {
-            val enabledHeadersMap = customHeaders
-                .filter { it.enabled && it.key.isNotBlank() }
-                .associate { it.key to it.value }
-
-            if (enabledHeadersMap.isNotEmpty()) {
-                webView.loadUrl(activeUrl, enabledHeadersMap)
-            } else {
-                webView.loadUrl(activeUrl)
-            }
-        }
-        onDispose { }
-    }
+    var lastLoadedUrl by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("") }
 
     AndroidView(
         factory = { webView },
+        update = { view ->
+            if (activeUrl.isNotBlank() && activeUrl != lastLoadedUrl) {
+                lastLoadedUrl = activeUrl
+                val enabledHeadersMap = customHeaders
+                    .filter { it.enabled && it.key.isNotBlank() }
+                    .associate { it.key to it.value }
+                if (enabledHeadersMap.isNotEmpty()) {
+                    view.loadUrl(activeUrl, enabledHeadersMap)
+                } else {
+                    view.loadUrl(activeUrl)
+                }
+            }
+        },
         modifier = modifier.fillMaxSize()
     )
 }

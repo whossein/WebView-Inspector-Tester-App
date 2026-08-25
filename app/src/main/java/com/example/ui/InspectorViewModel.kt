@@ -540,7 +540,7 @@ class InspectorViewModel(application: Application) : AndroidViewModel(applicatio
 
             val activeParams = currentState.queryParams.filter { it.enabled && it.key.isNotBlank() }
             if (activeParams.isEmpty()) {
-                baseWithoutQuery
+                rawUrl
             } else {
                 val queryString = activeParams.joinToString("&") { param ->
                     val encodedKey = java.net.URLEncoder.encode(param.key, "UTF-8")

@@ -68,6 +68,11 @@ import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalFocusManager
@@ -160,9 +165,28 @@ fun TopControlsBar(
                                 focusManager.clearFocus()
                                 onLoadUrl()
                             }),
+                            trailingIcon = {
+                                IconButton(onClick = {
+                                    focusManager.clearFocus()
+                                    onLoadUrl()
+                                }) {
+                                    Icon(Icons.Default.ArrowForward, contentDescription = "Go")
+                                }
+                            },
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .testTag("url_input_field"),
+                                .testTag("url_input_field")
+                                .onKeyEvent { event ->
+                                    if (event.key == Key.Enter || event.key == Key.NumPadEnter) {
+                                        if (event.type == KeyEventType.KeyUp) {
+                                            focusManager.clearFocus()
+                                            onLoadUrl()
+                                        }
+                                        true
+                                    } else {
+                                        false
+                                    }
+                                },
                             shape = RoundedCornerShape(24.dp),
                             colors = TextFieldDefaults.colors(
                                 focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
