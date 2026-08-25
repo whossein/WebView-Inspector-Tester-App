@@ -127,7 +127,7 @@ private const val NETWORK_INSPECTOR_JS = """
 
             const startTime = Date.now();
             try {
-                const response = await origFetch.apply(this, args);
+                const response = await origFetch.apply(window, args);
                 const clone = response.clone();
                 let resText = '';
                 try { resText = await clone.text(); } catch(e) {}
