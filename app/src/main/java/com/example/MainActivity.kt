@@ -111,6 +111,7 @@ fun PwaInspectorApp(viewModel: InspectorViewModel = viewModel()) {
             ) {
                 WebViewContainer(
                     activeUrl = uiState.activeUrl,
+                    urlReloadTrigger = uiState.urlReloadTrigger,
                     customHeaders = uiState.customHeaders,
                     userAgentPreset = uiState.userAgentPreset,
                     customUserAgent = uiState.customUserAgent,

@@ -69,6 +69,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.type
@@ -176,7 +178,7 @@ fun TopControlsBar(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .testTag("url_input_field")
-                                .onKeyEvent { event ->
+                                .onPreviewKeyEvent { event ->
                                     if (event.key == Key.Enter || event.key == Key.NumPadEnter) {
                                         if (event.type == KeyEventType.KeyUp) {
                                             focusManager.clearFocus()

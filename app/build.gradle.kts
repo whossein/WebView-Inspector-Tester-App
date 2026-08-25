@@ -18,8 +18,8 @@ android {
     applicationId = "com.aistudio.pwatester.inspect"
     minSdk = 24
     targetSdk = 34
-    versionCode = 20
-    versionName = "3.8"
+    versionCode = 23
+    versionName = "3.11"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }

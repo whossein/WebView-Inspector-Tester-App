@@ -43,6 +43,7 @@ import kotlinx.coroutines.launch
 data class InspectorUiState(
     val urlInput: String = "https://daramet.com/whossein",
     val activeUrl: String = "",
+    val urlReloadTrigger: Int = 0,
     val queryParams: List<QueryParam> = emptyList(),
     val customHeaders: List<HeaderParam> = emptyList(),
     val userAgentPreset: UserAgentPreset = UserAgentPreset.DEFAULT_MOBILE,
@@ -559,7 +560,7 @@ class InspectorViewModel(application: Application) : AndroidViewModel(applicatio
             rawUrl
         }
 
-        _uiState.update { it.copy(activeUrl = active) }
+        _uiState.update { it.copy(activeUrl = active, urlReloadTrigger = it.urlReloadTrigger + 1) }
     }
 
     fun handleDeepLinkIntent(intent: Intent?) {

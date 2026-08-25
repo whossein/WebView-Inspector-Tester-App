@@ -86,7 +86,7 @@ private const val NETWORK_INSPECTOR_JS = """(function() {
         for (let rule of window.__mockRules) {
             if (!rule.enabled) continue;
             if (rule.method && rule.method !== 'ALL' && rule.method.toUpperCase() !== method.toUpperCase()) continue;
-            if (!rule.urlPattern || rule.urlPattern === '*' || url.toLowerCase().includes(rule.urlPattern.toLowerCase())) {
+            if (!rule.urlPattern || rule.urlPattern === '*' || (url && url.toLowerCase().includes(rule.urlPattern.toLowerCase()))) {
                 return rule;
             }
         }
@@ -98,7 +98,7 @@ private const val NETWORK_INSPECTOR_JS = """(function() {
         window.fetch = async function(...args) {
             let url = typeof args[0] === 'string' ? args[0] : (args[0] && args[0].url ? args[0].url : '');
             let options = args[1] || {};
-            let method = (options.method || 'GET').toUpperCase();
+            let method = (options.method || (args[0] && args[0].method) || 'GET').toUpperCase();
             let reqBody = '';
             if (options.body) {
                 if (typeof options.body === 'string') reqBody = options.body;
@@ -122,14 +122,16 @@ private const val NETWORK_INSPECTOR_JS = """(function() {
             
             const mockRule = findMatchingMock(url, method);
             if (mockRule) {
-                if (window.AndroidNetworkInspector) {
-                    window.AndroidNetworkInspector.logNetworkRequest(
-                        url, method, mockRule.statusCode, 'OK (Mocked)',
-                        JSON.stringify(reqHeaders), reqBody,
-                        JSON.stringify({'Content-Type': mockRule.contentType || 'application/json'}),
-                        mockRule.responseBody || '', 0, true
-                    );
-                }
+                try {
+                    if (window.AndroidNetworkInspector) {
+                        window.AndroidNetworkInspector.logNetworkRequest(
+                            url, method, mockRule.statusCode, 'OK (Mocked)',
+                            JSON.stringify(reqHeaders), reqBody,
+                            JSON.stringify({'Content-Type': mockRule.contentType || 'application/json'}),
+                            mockRule.responseBody || '', 0, true
+                        );
+                    }
+                } catch(e) {}
                 return new Response(mockRule.responseBody || '', {
                     status: mockRule.statusCode || 200,
                     statusText: 'OK (Mocked)',
@@ -140,42 +142,54 @@ private const val NETWORK_INSPECTOR_JS = """(function() {
             const startTime = Date.now();
             try {
                 const response = await origFetch.apply(window, args);
-                const clone = response.clone();
-                let resText = '';
-                try { 
-                    const ct = clone.headers.get('content-type') || '';
-                    if (ct.includes('application/json') || ct.includes('text/')) {
-                        resText = await clone.text(); 
-                    } else {
-                        resText = '[Binary/Other Data]';
-                    }
-                } catch(e) {}
                 
-                let resHeaders = {};
-                try {
-                    if (typeof clone.headers.forEach === 'function') {
-                        clone.headers.forEach((v, k) => resHeaders[k] = v);
+                // Do not block fetch! Do logging in background.
+                setTimeout(async () => {
+                    let clone = null;
+                    try { clone = response.clone(); } catch(e) {}
+                    let resText = '';
+                    if (clone) {
+                        try { 
+                            const ct = clone.headers.get('content-type') || '';
+                            if (ct.includes('application/json') || ct.includes('text/')) {
+                                resText = await clone.text(); 
+                            } else {
+                                resText = '[Binary/Other Data]';
+                            }
+                        } catch(e) {}
                     }
-                } catch(e) {}
+                    
+                    let resHeaders = {};
+                    try {
+                        if (typeof response.headers.forEach === 'function') {
+                            response.headers.forEach((v, k) => resHeaders[k] = v);
+                        }
+                    } catch(e) {}
+                    
+                    try {
+                        if (window.AndroidNetworkInspector) {
+                            window.AndroidNetworkInspector.logNetworkRequest(
+                                url, method, response.status, response.statusText || 'OK',
+                                JSON.stringify(reqHeaders), reqBody,
+                                JSON.stringify(resHeaders), resText.substring(0, 100000),
+                                Date.now() - startTime, false
+                            );
+                        }
+                    } catch(e) {}
+                }, 10);
                 
-                if (window.AndroidNetworkInspector) {
-                    window.AndroidNetworkInspector.logNetworkRequest(
-                        url, method, response.status, response.statusText || 'OK',
-                        JSON.stringify(reqHeaders), reqBody,
-                        JSON.stringify(resHeaders), resText,
-                        Date.now() - startTime, false
-                    );
-                }
                 return response;
             } catch(err) {
-                if (window.AndroidNetworkInspector) {
-                    window.AndroidNetworkInspector.logNetworkRequest(
-                        url, method, 0, err.message || 'Failed',
-                        JSON.stringify(reqHeaders), reqBody,
-                        '{}', '',
-                        Date.now() - startTime, false
-                    );
-                }
+                try {
+                    if (window.AndroidNetworkInspector) {
+                        window.AndroidNetworkInspector.logNetworkRequest(
+                            url, method, 0, err.message || 'Failed',
+                            JSON.stringify(reqHeaders), reqBody,
+                            '{}', '',
+                            Date.now() - startTime, false
+                        );
+                    }
+                } catch(e) {}
                 throw err;
             }
         };
@@ -219,14 +233,16 @@ private const val NETWORK_INSPECTOR_JS = """(function() {
             
             const mockRule = findMatchingMock(url, method);
             if (mockRule) {
-                if (window.AndroidNetworkInspector) {
-                    window.AndroidNetworkInspector.logNetworkRequest(
-                        url, method, mockRule.statusCode, 'OK (Mocked)',
-                        JSON.stringify(reqHeaders), reqBody,
-                        JSON.stringify({'Content-Type': mockRule.contentType || 'application/json'}),
-                        mockRule.responseBody || '', 0, true
-                    );
-                }
+                try {
+                    if (window.AndroidNetworkInspector) {
+                        window.AndroidNetworkInspector.logNetworkRequest(
+                            url, method, mockRule.statusCode, 'OK (Mocked)',
+                            JSON.stringify(reqHeaders), reqBody,
+                            JSON.stringify({'Content-Type': mockRule.contentType || 'application/json'}),
+                            mockRule.responseBody || '', 0, true
+                        );
+                    }
+                } catch(e) {}
                 setTimeout(() => {
                     try {
                         Object.defineProperty(this, 'status', { value: mockRule.statusCode || 200, writable: true });
@@ -248,14 +264,15 @@ private const val NETWORK_INSPECTOR_JS = """(function() {
                 try {
                     let resHeadersStr = this.getAllResponseHeaders() || '';
                     let resHeaders = {};
-                    resHeadersStr.split('\r\n').forEach(line => {
+                    resHeadersStr.split('
+').forEach(line => {
                         let parts = line.split(': ');
                         if (parts.length === 2) resHeaders[parts[0]] = parts[1];
                     });
                     
                     let resText = '';
                     if (!this.responseType || this.responseType === 'text' || this.responseType === '') {
-                        resText = this.responseText || '';
+                        resText = (this.responseText || '').substring(0, 100000);
                     } else {
                         resText = '[' + this.responseType + ']';
                     }
@@ -435,6 +452,7 @@ private const val ELEMENT_INSPECTOR_JS = """
 @Composable
 fun WebViewContainer(
     activeUrl: String,
+    urlReloadTrigger: Int = 0,
     customHeaders: List<HeaderParam>,
     userAgentPreset: UserAgentPreset,
     customUserAgent: String,
@@ -656,12 +674,14 @@ fun WebViewContainer(
     }
 
     var lastLoadedUrl by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("") }
+    var lastTrigger by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(0) }
 
     AndroidView(
         factory = { webView },
         update = { view ->
-            if (activeUrl.isNotBlank() && activeUrl != lastLoadedUrl) {
+            if (activeUrl.isNotBlank() && (activeUrl != lastLoadedUrl || urlReloadTrigger != lastTrigger)) {
                 lastLoadedUrl = activeUrl
+                lastTrigger = urlReloadTrigger
                 val enabledHeadersMap = customHeaders
                     .filter { it.enabled && it.key.isNotBlank() }
                     .associate { it.key to it.value }
